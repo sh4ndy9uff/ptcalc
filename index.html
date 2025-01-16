@@ -3,75 +3,157 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>計算アプリ</title>
+  <title>ご家財計算機</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       margin: 20px;
+      padding: 0;
+      box-sizing: border-box;
     }
-    .item-row {
+    .container {
+      max-width: 800px;
+      margin: auto;
+    }
+    .item-button {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 10px 0;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    .item-button:hover {
+      background-color: #f0f0f0;
+    }
+    .quantity-controls {
       display: flex;
       align-items: center;
-      margin-bottom: 10px;
     }
-    .item-row input[type="number"] {
-      width: 60px;
-      margin-left: 10px;
+    .quantity-controls button {
+      width: 30px;
+      height: 30px;
+      font-size: 18px;
+      margin: 0 5px;
+      cursor: pointer;
+    }
+    .quantity-controls span {
+      font-size: 16px;
+      min-width: 40px;
+      text-align: center;
     }
     .total {
       font-weight: bold;
       margin-top: 20px;
+      font-size: 20px;
+      text-align: center;
+    }
+    @media (max-width: 600px) {
+      .item-button {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .quantity-controls {
+        margin-top: 10px;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>計算アプリ</h1>
-  <div id="items-container"></div>
-  <div class="total">合計: <span id="total-points">0</span> pt</div>
+  <div class="container">
+    <h1>ご家財リスト</h1>
+    <div id="items-container"></div>
+    <div class="total">合計: <span id="total-points">0</span> pt</div>
+  </div>
 
   <script>
-    // JSONデータで品目とポイントを管理
-    const itemsData = [
-      { name: "段ボール", points: 10 },
-      { name: "テーブル", points: 15 },
-      { name: "椅子", points: 5 },
-      { name: "食器棚", points: 20 }
-    ];
+    // 外部JSONファイルのパス
+    const jsonUrl = 'items.json';
 
-    const itemsContainer = document.getElementById("items-container");
-    const totalPointsElement = document.getElementById("total-points");
+    // DOM要素
+    const itemsContainer = document.getElementById('items-container');
+    const totalPointsElement = document.getElementById('total-points');
 
-    // アイテムをUIに表示
-    itemsData.forEach((item, index) => {
-      const itemRow = document.createElement("div");
-      itemRow.className = "item-row";
-      itemRow.innerHTML = `
-        <label>
-          <input type="checkbox" id="item-${index}" data-points="${item.points}">
-          ${item.name} (${item.points} pt)
-        </label>
-        <input type="number" id="quantity-${index}" value="1" min="1" disabled>
-      `;
-      itemsContainer.appendChild(itemRow);
-    });
+    // 合計ポイント
+    let totalPoints = 0;
 
-    // チェックボックスや数量変更時に合計を計算
-    itemsContainer.addEventListener("input", () => {
-      let total = 0;
-      itemsData.forEach((item, index) => {
-        const checkbox = document.getElementById(`item-${index}`);
-        const quantityInput = document.getElementById(`quantity-${index}`);
-        if (checkbox.checked) {
-          quantityInput.disabled = false;
-          const quantity = parseInt(quantityInput.value, 10) || 0;
-          total += item.points * quantity;
-        } else {
-          quantityInput.disabled = true;
-          quantityInput.value = 1; // リセット
+    // 選択された品目の状態を保持
+    const selectedItems = {};
+
+    // 外部JSONファイルを読み込み
+    async function loadItems() {
+      try {
+        const response = await fetch(jsonUrl);
+        const itemsData = await response.json();
+
+        // UIを生成
+        itemsData.forEach((item, index) => {
+          const itemButton = document.createElement('div');
+          itemButton.className = 'item-button';
+          itemButton.innerHTML = `
+            <span>${item.name} (${item.points} pt)</span>
+            <div class="quantity-controls">
+              <button class="decrement" data-index="${index}" data-points="${item.points}">-</button>
+              <span id="quantity-${index}">0</span>
+              <button class="increment" data-index="${index}" data-points="${item.points}">+</button>
+            </div>
+          `;
+          itemsContainer.appendChild(itemButton);
+
+          // 初期化
+          selectedItems[index] = { quantity: 0, points: item.points };
+        });
+
+        // イベントリスナーを設定
+        setupEventListeners();
+      } catch (error) {
+        console.error('JSONファイルの読み込みに失敗しました:', error);
+      }
+    }
+
+    // ボタンイベントを設定
+    function setupEventListeners() {
+      itemsContainer.addEventListener('click', (event) => {
+        const target = event.target;
+        if (target.classList.contains('increment') || target.classList.contains('decrement')) {
+          const index = target.dataset.index;
+          const points = parseInt(target.dataset.points, 10);
+          const quantitySpan = document.getElementById(`quantity-${index}`);
+          let currentQuantity = parseInt(quantitySpan.textContent, 10);
+
+          // 数量を更新
+          if (target.classList.contains('increment')) {
+            currentQuantity++;
+          } else if (target.classList.contains('decrement') && currentQuantity > 0) {
+            currentQuantity--;
+          }
+
+          // UIと状態を更新
+          quantitySpan.textContent = currentQuantity;
+          selectedItems[index].quantity = currentQuantity;
+
+          // 合計ポイントを計算
+          calculateTotalPoints();
         }
       });
-      totalPointsElement.textContent = total;
-    });
+    }
+
+    // 合計ポイントを計算
+    function calculateTotalPoints() {
+      totalPoints = 0;
+      for (const key in selectedItems) {
+        const { quantity, points } = selectedItems[key];
+        totalPoints += quantity * points;
+      }
+      totalPointsElement.textContent = totalPoints;
+    }
+
+    // 初期化
+    loadItems();
   </script>
 </body>
 </html>
